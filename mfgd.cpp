@@ -9,6 +9,29 @@
 
 using namespace std;
 
+/*
+typedef struct Matrix {
+    float m0, m4, m8, m12;  // Row 1: x-axis basis vector X, translation X
+    float m1, m5, m9, m13;  // Row 2: y-axis basis vector Y, translation Y
+    float m2, m6, m10, m14; // Row 3: z-axis basis vector Z, translation Z
+    float m3, m7, m11, m15; // Row 4: Homogeneous coordinates (usually 0, 0, 0, 1)
+} Matrix;
+*/
+
+Matrix rotate (Matrix mat, Vector3 right, Vector3 up, Vector3 forward) {
+    Matrix ret = mat;
+    tie(ret.m0, ret.m1, ret.m2) = {right.x, right.y, right.z};
+    tie(ret.m4, ret.m5, ret.m6) = {up.x, up.y, up.z};
+    tie(ret.m8, ret.m9, ret.m10) = {forward.x, forward.y, forward.z};
+    return ret;
+}
+
+Matrix translate (Matrix mat, Vector3 translation) {
+    Matrix ret = mat;
+    tie(ret.m12, ret.m13, ret.m14) = {translation.x, translation.y, translation.z};
+    return ret;
+}
+
 struct EulerAngle {
     float pitch{}, yaw{}, roll{};
     EulerAngle() {
@@ -171,6 +194,42 @@ struct Bullet {
     }
 };
 
+struct MerryGoRound {
+    Vector3 center; // draw as a circle
+    Vector3 child_local_center = {2, 0.5, 2};
+    float radius = 4.0f;
+
+    float app_start_time;
+    float rotation_interval = 3.0f; // in seconds.
+
+    Matrix _m_transform = MatrixIdentity(); // TR / Rigid Body transfomation
+    Matrix _m_child_transform = MatrixIdentity();
+
+    float evaluate_angle () {
+        float total_time = GetTime(); // app starts at 0 seconds.
+        float rem_partial_rotation = total_time / rotation_interval - int(total_time / rotation_interval);
+
+        return 360 * rem_partial_rotation;
+    }
+
+    void setCenter(Vector3 _center) {
+        center = _center;
+        _m_transform = translate(_m_transform, _center);
+    }
+
+    void rotateSlightly() {
+        float degrees_per_frame = 360 / 60 * 0.5f; // 0.5 rotations per second
+
+        Matrix mSpin = MatrixRotate({0, 1, 0}, degrees_per_frame * DEG2RAD);
+        Matrix rotation_only = translate(_m_transform, {0, 0, 0});
+        Matrix translation_only = translate(MatrixIdentity(), center);
+        
+        _m_transform = rotation_only * mSpin * translation_only;
+        _m_child_transform = MatrixTranslate(child_local_center.x, child_local_center.y, child_local_center.z)
+                                * _m_transform;
+    }
+};
+
 struct Plane {
     // ax + by + cz = d;
     Vector3 normal;
@@ -180,29 +239,6 @@ struct Plane {
 struct Frustum {
     Plane top, bottom, left, right, near, far;
 } camera_frustum;
-
-/*
-typedef struct Matrix {
-    float m0, m4, m8, m12;  // Row 1: x-axis basis vector X, translation X
-    float m1, m5, m9, m13;  // Row 2: y-axis basis vector Y, translation Y
-    float m2, m6, m10, m14; // Row 3: z-axis basis vector Z, translation Z
-    float m3, m7, m11, m15; // Row 4: Homogeneous coordinates (usually 0, 0, 0, 1)
-} Matrix;
-*/
-
-Matrix rotate (Matrix mat, Vector3 right, Vector3 up, Vector3 forward) {
-    Matrix ret = mat;
-    tie(ret.m0, ret.m1, ret.m2) = {right.x, right.y, right.z};
-    tie(ret.m4, ret.m5, ret.m6) = {up.x, up.y, up.z};
-    tie(ret.m8, ret.m9, ret.m10) = {forward.x, forward.y, forward.z};
-    return ret;
-}
-
-Matrix translate (Matrix mat, Vector3 translation) {
-    Matrix ret = mat;
-    tie(ret.m12, ret.m13, ret.m14) = {translation.x, translation.y, translation.z};
-    return ret;
-}
 
 Matrix constructCameraView(const Camera& camera) {
     Vector3 translation = camera.position;
@@ -273,6 +309,12 @@ int main(void) {
         AABB b(mn, mx);
         e.bbox = b;
     }
+
+    MerryGoRound merry_go_round;
+    merry_go_round.center = {12, 2, -12};
+
+    MerryGoRound merry_go_round_2;
+    merry_go_round_2.setCenter({12, -2, -12});
 
     EulerAngle angle;
 
@@ -588,6 +630,61 @@ int main(void) {
                         rlPopMatrix();
                     }
 
+                    // merry go round
+                    {
+                        // Normal way
+                        {
+                            // disc
+                            rlPushMatrix();
+                                rlTranslatef(merry_go_round.center.x, merry_go_round.center.y, merry_go_round.center.z);
+                                rlRotatef(merry_go_round.evaluate_angle(), 0, 1, 0);
+                                // DrawRectangle(Vector3Zero(), merry_go_round.radius, {1, 0, 0}, 90, BLUE);
+                                DrawCubeWires(Vector3Zero(), merry_go_round.radius * 2,
+                                    0.1,
+                                    merry_go_round.radius * 2, 
+                                    BLUE
+                                );
+                            rlPopMatrix();
+
+                            // child object
+                            rlPushMatrix();
+                                auto relative_vector = merry_go_round.child_local_center;
+
+                                rlTranslatef(merry_go_round.center.x, merry_go_round.center.y, merry_go_round.center.z);
+                                rlRotatef(merry_go_round.evaluate_angle(), 0, 1, 0);
+                                rlTranslatef(relative_vector.x, relative_vector.y, relative_vector.z);
+                                DrawCube(Vector3Zero(), 0.2f, 0.2f, 0.2f, RED);
+                            rlPopMatrix();
+                        }
+
+                        // Acuumulated rotation - as explained in MFGD
+                        {
+                            merry_go_round_2.rotateSlightly();
+
+                            // disc
+                            {
+                                rlPushMatrix();
+                                    rlMultMatrixf(MatrixToFloat(merry_go_round_2._m_transform));
+                                    DrawCubeWires(
+                                        Vector3Zero(), 
+                                        merry_go_round_2.radius * 2,
+                                        0.1f,
+                                        merry_go_round_2.radius * 2,
+                                        VIOLET
+                                    );
+                                rlPopMatrix();
+                            }
+
+                            // child object
+                            {
+                                rlPushMatrix();
+                                    rlMultMatrixf(MatrixToFloat(merry_go_round_2._m_child_transform));
+                                    DrawCube(Vector3Zero(), 0.2f, 0.2f, 0.2f, RED);
+                                rlPopMatrix();
+                            }
+                        }
+                    }
+                    
                     // banner
                     {
                         rlPushMatrix();
