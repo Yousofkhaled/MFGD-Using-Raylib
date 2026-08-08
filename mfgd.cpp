@@ -292,7 +292,7 @@ int main(void) {
 
     float l, w, h;
     l = w = h = 2;
-    Vector3 cube_center = {0, h / 2.0f, 0};
+    Entity player({0, h / 2.0f, 0});
 
     float enemy_l = 4, enemy_w = 4, enemy_h = 4; 
 
@@ -314,13 +314,13 @@ int main(void) {
     merry_go_round.center = {12, 2, -12};
 
     MerryGoRound merry_go_round_2;
-    merry_go_round_2.setCenter({12, -2, -12});
+    merry_go_round_2.setCenter({-12, -2, -12});
 
     EulerAngle angle;
 
     Camera3D camera = { 0 };
     {
-        camera.position = cube_center - angle.toVector() * 8.0;
+        camera.position = player.center - angle.toVector() * 8.0;
         camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
         camera.fovy = 45.0f;
         camera.projection = CAMERA_PERSPECTIVE;
@@ -387,30 +387,30 @@ int main(void) {
         // keyboard input
         {
             if (IsKeyDown(KEY_W)) {
-                cube_center = Vector3Add(cube_center, forward);
+                player.center = Vector3Add(player.center, forward);
             } if (IsKeyDown(KEY_S)) {
-                cube_center = Vector3Add(cube_center, Vector3Negate(forward));
+                player.center = Vector3Add(player.center, Vector3Negate(forward));
             }
             
             if (IsKeyDown(KEY_D)) {
-                cube_center = Vector3Add(cube_center, right);
+                player.center = Vector3Add(player.center, right);
             } else if (IsKeyDown(KEY_A)) {
-                cube_center = Vector3Add(cube_center, Vector3Negate(right));
+                player.center = Vector3Add(player.center, Vector3Negate(right));
             }
         }
 
-        camera.position = cube_center - angle.toVector() * zoom;
-        camera.target = cube_center;
+        camera.position = player.center - angle.toVector() * zoom;
+        camera.target = player.center;
 
         Matrix cameraProjection = MatrixPerspective(camera.fovy * DEG2RAD, (float)GetScreenWidth()/(float)GetScreenHeight(), 0.01f, 1000.0f);
         Matrix cameraView = constructCameraView(camera);
 
-        evaluateFrustum(direction, cube_center, angle, 45, 45);
+        evaluateFrustum(direction, player.center, angle, 45, 45);
 
         // Move enemies towards player
         {
             // for (auto& e : enemies) {
-            //     Vector3 d = Vector3Normalize(cube_center - e.center);
+            //     Vector3 d = Vector3Normalize(player.center - e.center);
             //     d *= 0.03;
 
             //     e.center += d;
@@ -429,7 +429,7 @@ int main(void) {
         // detecting bullet collision
         {
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyDown(KEY_SPACE)) {
-                lines.push_back({cube_center, (cube_center + Vector3Normalize(direction) * 500.0f)});
+                lines.push_back({player.center, (player.center + Vector3Normalize(direction) * 500.0f)});
                 if (lines.size() > 1) {
                     lines.pop_front();
                 }
@@ -511,7 +511,7 @@ int main(void) {
 
                 Vector3 plane_vec = {0, 1, 0};
                 
-                auto numerator = -Vector3DotProduct(plane_vec, cube_center);
+                auto numerator = -Vector3DotProduct(plane_vec, player.center);
                 auto denominator = Vector3DotProduct(plane_vec, Vector3Normalize(direction));
                 if (denominator == 0) {
                     cout << "trace : line - plane collision: no solution\n";
@@ -520,7 +520,7 @@ int main(void) {
                     if (k < 0) {
                         cout << "trace : line - plane collision: opposite directions\n";
                     } else {
-                        Vector3 intersection_pos = Vector3Add(cube_center, Vector3Normalize(direction) * k);
+                        Vector3 intersection_pos = Vector3Add(player.center, Vector3Normalize(direction) * k);
                         collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
 
                         cout << "trace : line - plane collision: collided at : " 
@@ -619,11 +619,11 @@ int main(void) {
                         };
 
                         rlPushMatrix();
-                            rlTranslatef(cube_center.x, cube_center.y, cube_center.z);
+                            rlTranslatef(player.center.x, player.center.y, player.center.z);
                             rlMultMatrixf(MatrixToFloat(player_basis));
 
-                            // You can avoid this if you render at exactly vector3zero instead of cube_center.
-                            // rlTranslatef(-cube_center.x, -cube_center.y, -cube_center.z);
+                            // You can avoid this if you render at exactly vector3zero instead of player.center.
+                            // rlTranslatef(-player.center.x, -player.center.y, -player.center.z);
                             
                             DrawCube(Vector3Zero(), 0.1f, 0.1f, 0.1f, RED);
                             DrawCubeWires(Vector3Zero(), l, l, l, GREEN);
@@ -691,8 +691,8 @@ int main(void) {
                             Vector3 banner = {-8.0f, 0.0f, -8.0f};
 
                             // 1. Calculate the 2D direction vector from the banner to the player
-                            float deltaX = cube_center.x - banner.x;
-                            float deltaZ = cube_center.z - banner.z;
+                            float deltaX = player.center.x - banner.x;
+                            float deltaZ = player.center.z - banner.z;
 
                             // 2. Use atan2f to get the precise 360-degree angle.
                             // We use deltaX and deltaZ relative to the grid. 
