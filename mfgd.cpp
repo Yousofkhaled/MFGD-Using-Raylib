@@ -214,19 +214,19 @@ struct MerryGoRound {
 
     void setCenter(Vector3 _center) {
         center = _center;
-        _m_transform = translate(_m_transform, _center);
+        _m_transform = translate(MatrixIdentity(), _center);
+        _m_child_transform = translate(MatrixIdentity(), child_local_center + center);
     }
 
     void rotateSlightly() {
-        float degrees_per_frame = 360 / 60 * 0.5f; // 0.5 rotations per second
+        float degrees_per_frame = 360 / 60 * 0.07f; // 0.5 rotations per second
 
         Matrix mSpin = MatrixRotate({0, 1, 0}, degrees_per_frame * DEG2RAD);
         Matrix rotation_only = translate(_m_transform, {0, 0, 0});
         Matrix translation_only = translate(MatrixIdentity(), center);
-        
+
+        _m_child_transform = (_m_child_transform) * MatrixInvert(_m_transform) * mSpin * _m_transform;
         _m_transform = rotation_only * mSpin * translation_only;
-        _m_child_transform = MatrixTranslate(child_local_center.x, child_local_center.y, child_local_center.z)
-                                * _m_transform;
     }
 };
 
@@ -679,7 +679,7 @@ int main(void) {
                             {
                                 rlPushMatrix();
                                     rlMultMatrixf(MatrixToFloat(merry_go_round_2._m_child_transform));
-                                    DrawCube(Vector3Zero(), 0.2f, 0.2f, 0.2f, RED);
+                                    DrawCube(Vector3Zero(), 0.5f, 0.5f, 0.5f, RED);
                                 rlPopMatrix();
                             }
                         }
