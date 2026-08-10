@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <tuple>
+#include <algorithm>
 
 using namespace std;
 
@@ -194,7 +196,71 @@ struct Bullet {
     }
 };
 
-struct MerryGoRound {
+struct EntityTransform {
+    Matrix _global_transform;
+    Matrix _local_transform;
+
+    EntityTransform* _move_parent = nullptr;
+
+    Matrix getGlobalTransform() {
+        if (_move_parent == nullptr)
+            return _global_transform;
+        return _local_transform * _move_parent->_global_transform;
+    }
+
+    Matrix getLocalTransform() {
+        return _local_transform;
+    }
+
+    void setParent(EntityTransform* parent) {
+        if (parent == nullptr) {
+            // Update the global coordinate before breaking free
+            _global_transform = getGlobalTransform();
+            _move_parent = nullptr;
+        } else {
+            _local_transform = getGlobalTransform() * MatrixInvert(parent->getGlobalTransform());
+            _move_parent = parent;
+        }
+    }
+
+    void setGlobalTransform(Matrix new_global_transform) {
+        if (_move_parent != nullptr) {
+            _local_transform = new_global_transform * MatrixInvert(_move_parent->getGlobalTransform());
+        } else {
+            _global_transform = new_global_transform;
+        }
+    }
+
+    void translate_item (Vector3 extra_translation) {
+        Matrix translation_mat = MatrixTranslate(extra_translation.x, 
+                                                    extra_translation.y,
+                                                    extra_translation.z);
+        if (_move_parent == nullptr) {
+            setGlobalTransform(getGlobalTransform() * translation_mat);
+        } else {
+            _local_transform = getLocalTransform() * translation_mat;
+        }
+    }
+
+    // for now item rotates about its center.
+    void rotate_item(float theta) {
+
+    }
+};
+
+struct Entity : public EntityTransform {
+    Vector3 center;
+
+    Vector3 getCenter() {
+        return Vector3Transform({0, 0, 0}, getGlobalTransform());
+    }
+
+    Entity(Vector3 _center) {
+        _global_transform = MatrixTranslate(_center.x, _center.y, center.z);
+    }
+};
+
+struct MerryGoRound : public EntityTransform {
     Vector3 center; // draw as a circle
     Vector3 child_local_center = {2, 0.5, 2};
     float radius = 4.0f;
@@ -202,7 +268,6 @@ struct MerryGoRound {
     float app_start_time;
     float rotation_interval = 3.0f; // in seconds.
 
-    Matrix _m_transform = MatrixIdentity(); // TR / Rigid Body transfomation
     Matrix _m_child_transform = MatrixIdentity();
 
     float evaluate_angle () {
@@ -214,19 +279,19 @@ struct MerryGoRound {
 
     void setCenter(Vector3 _center) {
         center = _center;
-        _m_transform = translate(MatrixIdentity(), _center);
+        setGlobalTransform(translate(MatrixIdentity(), _center));
         _m_child_transform = translate(MatrixIdentity(), child_local_center + center);
     }
 
     void rotateSlightly() {
-        float degrees_per_frame = 360 / 60 * 0.07f; // 0.5 rotations per second
+        float degrees_per_frame = 360 / 60 * 0.07f; // x rotations per second
 
         Matrix mSpin = MatrixRotate({0, 1, 0}, degrees_per_frame * DEG2RAD);
-        Matrix rotation_only = translate(_m_transform, {0, 0, 0});
+        Matrix rotation_only = translate(_global_transform, {0, 0, 0});
         Matrix translation_only = translate(MatrixIdentity(), center);
 
-        _m_child_transform = (_m_child_transform) * MatrixInvert(_m_transform) * mSpin * _m_transform;
-        _m_transform = rotation_only * mSpin * translation_only;
+        _m_child_transform = (_m_child_transform) * MatrixInvert(_global_transform) * mSpin * _global_transform;
+        _global_transform = rotation_only * mSpin * translation_only;
     }
 };
 
@@ -292,7 +357,7 @@ int main(void) {
 
     float l, w, h;
     l = w = h = 2;
-    Vector3 cube_center = {0, h / 2.0f, 0};
+    Entity player({0, h / 2.0f, 0});
 
     float enemy_l = 4, enemy_w = 4, enemy_h = 4; 
 
@@ -310,17 +375,18 @@ int main(void) {
         e.bbox = b;
     }
 
+    // "Manual" way for illustration. Do not use this instance.
     MerryGoRound merry_go_round;
     merry_go_round.center = {12, 2, -12};
 
     MerryGoRound merry_go_round_2;
-    merry_go_round_2.setCenter({12, -2, -12});
+    merry_go_round_2.setCenter({-12, -2, -12});
 
     EulerAngle angle;
 
     Camera3D camera = { 0 };
     {
-        camera.position = cube_center - angle.toVector() * 8.0;
+        camera.position = player.getCenter() - angle.toVector() * 8.0;
         camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
         camera.fovy = 45.0f;
         camera.projection = CAMERA_PERSPECTIVE;
@@ -386,31 +452,51 @@ int main(void) {
 
         // keyboard input
         {
+            // Must update this
+            Vector3 extra_translation{0, 0, 0};
             if (IsKeyDown(KEY_W)) {
-                cube_center = Vector3Add(cube_center, forward);
+                extra_translation = forward;
             } if (IsKeyDown(KEY_S)) {
-                cube_center = Vector3Add(cube_center, Vector3Negate(forward));
+                extra_translation = Vector3Negate(forward);
             }
             
             if (IsKeyDown(KEY_D)) {
-                cube_center = Vector3Add(cube_center, right);
+                extra_translation = right;
             } else if (IsKeyDown(KEY_A)) {
-                cube_center = Vector3Add(cube_center, Vector3Negate(right));
+                extra_translation = Vector3Negate(right);
+            }
+
+            player.translate_item(extra_translation);
+        }
+
+        // Player uses transformation of the merry go round
+        {
+            auto v = player.getCenter() - merry_go_round_2.center;
+            v.y = 0;
+
+            auto dist = sqrt(Vector3DotProduct(v, v));
+
+            if (dist <= merry_go_round_2.radius) {
+                cout << "trace" << dist << " : i am INSIDE the merry go round\n";
+                player.setParent(&merry_go_round_2);
+            } else {
+                cout << "trace" << dist << " : i am OUTSIDE the merry go round\n";
+                player.setParent(nullptr);
             }
         }
 
-        camera.position = cube_center - angle.toVector() * zoom;
-        camera.target = cube_center;
+        camera.position = player.getCenter() - angle.toVector() * zoom;
+        camera.target = player.getCenter();
 
         Matrix cameraProjection = MatrixPerspective(camera.fovy * DEG2RAD, (float)GetScreenWidth()/(float)GetScreenHeight(), 0.01f, 1000.0f);
         Matrix cameraView = constructCameraView(camera);
 
-        evaluateFrustum(direction, cube_center, angle, 45, 45);
+        evaluateFrustum(direction, player.getCenter(), angle, 45, 45);
 
         // Move enemies towards player
         {
             // for (auto& e : enemies) {
-            //     Vector3 d = Vector3Normalize(cube_center - e.center);
+            //     Vector3 d = Vector3Normalize(player.getCenter() - e.center);
             //     d *= 0.03;
 
             //     e.center += d;
@@ -429,7 +515,7 @@ int main(void) {
         // detecting bullet collision
         {
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyDown(KEY_SPACE)) {
-                lines.push_back({cube_center, (cube_center + Vector3Normalize(direction) * 500.0f)});
+                lines.push_back({player.getCenter(), (player.getCenter() + Vector3Normalize(direction) * 500.0f)});
                 if (lines.size() > 1) {
                     lines.pop_front();
                 }
@@ -511,7 +597,7 @@ int main(void) {
 
                 Vector3 plane_vec = {0, 1, 0};
                 
-                auto numerator = -Vector3DotProduct(plane_vec, cube_center);
+                auto numerator = -Vector3DotProduct(plane_vec, player.getCenter());
                 auto denominator = Vector3DotProduct(plane_vec, Vector3Normalize(direction));
                 if (denominator == 0) {
                     cout << "trace : line - plane collision: no solution\n";
@@ -520,7 +606,7 @@ int main(void) {
                     if (k < 0) {
                         cout << "trace : line - plane collision: opposite directions\n";
                     } else {
-                        Vector3 intersection_pos = Vector3Add(cube_center, Vector3Normalize(direction) * k);
+                        Vector3 intersection_pos = Vector3Add(player.getCenter(), Vector3Normalize(direction) * k);
                         collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
 
                         cout << "trace : line - plane collision: collided at : " 
@@ -619,11 +705,14 @@ int main(void) {
                         };
 
                         rlPushMatrix();
-                            rlTranslatef(cube_center.x, cube_center.y, cube_center.z);
+                            rlTranslatef(player.getCenter().x, player.getCenter().y, player.getCenter().z);
                             rlMultMatrixf(MatrixToFloat(player_basis));
 
-                            // You can avoid this if you render at exactly vector3zero instead of cube_center.
-                            // rlTranslatef(-cube_center.x, -cube_center.y, -cube_center.z);
+                            // next video?
+                            // rlMultMatrixf(MatrixToFloat(player_basis * player.getGlobalTransform()));
+
+                            // You can avoid this if you render at exactly vector3zero instead of player.getCenter().
+                            // rlTranslatef(-player.getCenter().x, -player.getCenter().y, -player.getCenter().z);
                             
                             DrawCube(Vector3Zero(), 0.1f, 0.1f, 0.1f, RED);
                             DrawCubeWires(Vector3Zero(), l, l, l, GREEN);
@@ -664,7 +753,7 @@ int main(void) {
                             // disc
                             {
                                 rlPushMatrix();
-                                    rlMultMatrixf(MatrixToFloat(merry_go_round_2._m_transform));
+                                    rlMultMatrixf(MatrixToFloat(merry_go_round_2.getGlobalTransform()));
                                     DrawCubeWires(
                                         Vector3Zero(), 
                                         merry_go_round_2.radius * 2,
@@ -691,8 +780,8 @@ int main(void) {
                             Vector3 banner = {-8.0f, 0.0f, -8.0f};
 
                             // 1. Calculate the 2D direction vector from the banner to the player
-                            float deltaX = cube_center.x - banner.x;
-                            float deltaZ = cube_center.z - banner.z;
+                            float deltaX = player.getCenter().x - banner.x;
+                            float deltaZ = player.getCenter().z - banner.z;
 
                             // 2. Use atan2f to get the precise 360-degree angle.
                             // We use deltaX and deltaZ relative to the grid. 
