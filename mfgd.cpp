@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <tuple>
+#include <algorithm>
 
 using namespace std;
 
@@ -216,7 +218,7 @@ struct EntityTransform {
             _global_transform = getGlobalTransform();
             _move_parent = nullptr;
         } else {
-            _local_transform = getGlobalTransform() * MatrixInvert(_move_parent->getGlobalTransform());
+            _local_transform = getGlobalTransform() * MatrixInvert(parent->getGlobalTransform());
             _move_parent = parent;
         }
     }
@@ -240,7 +242,8 @@ struct EntityTransform {
         }
     }
 
-    void rotate_item() {
+    // for now item rotates about its center.
+    void rotate_item(float theta) {
 
     }
 };
@@ -249,7 +252,7 @@ struct Entity : public EntityTransform {
     Vector3 center;
 
     Vector3 getCenter() {
-        return Vector3Transform({0, 0, 0}, _global_transform);
+        return Vector3Transform({0, 0, 0}, getGlobalTransform());
     }
 
     Entity(Vector3 _center) {
@@ -464,6 +467,22 @@ int main(void) {
             }
 
             player.translate_item(extra_translation);
+        }
+
+        // Player uses transformation of the merry go round
+        {
+            auto v = player.getCenter() - merry_go_round_2.center;
+            v.y = 0;
+
+            auto dist = sqrt(Vector3DotProduct(v, v));
+
+            if (dist <= merry_go_round_2.radius) {
+                cout << "trace" << dist << " : i am INSIDE the merry go round\n";
+                player.setParent(&merry_go_round_2);
+            } else {
+                cout << "trace" << dist << " : i am OUTSIDE the merry go round\n";
+                player.setParent(nullptr);
+            }
         }
 
         camera.position = player.getCenter() - angle.toVector() * zoom;
@@ -686,10 +705,11 @@ int main(void) {
                         };
 
                         rlPushMatrix();
-                            // rlTranslatef(player.getCenter().x, player.getCenter().y, player.getCenter().z);
-                            // rlMultMatrixf(MatrixToFloat(player_basis));
+                            rlTranslatef(player.getCenter().x, player.getCenter().y, player.getCenter().z);
+                            rlMultMatrixf(MatrixToFloat(player_basis));
 
-                            rlMultMatrixf(MatrixToFloat(player.getGlobalTransform()));
+                            // next video?
+                            // rlMultMatrixf(MatrixToFloat(player_basis * player.getGlobalTransform()));
 
                             // You can avoid this if you render at exactly vector3zero instead of player.getCenter().
                             // rlTranslatef(-player.getCenter().x, -player.getCenter().y, -player.getCenter().z);
