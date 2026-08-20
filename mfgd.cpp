@@ -161,9 +161,12 @@ struct Enemy {
     int health = 3;
     Vector3 scaling {1, 1, 1};
 
-    Enemy(Vector3 c, float _yaw_angle) {
+    Color color;
+
+    Enemy(Vector3 c, float _yaw_angle, Color _color) {
         center = c;
         yaw_angle = _yaw_angle;
+        color = _color;
         bbox = AABB();
     }
     
@@ -370,9 +373,9 @@ int main(void) {
 
     float enemy_l = 4, enemy_w = 4, enemy_h = 4; 
 
-    vector<Enemy> enemies = {Enemy({-7, enemy_h / 2.0f, 4}, 45), 
-                            Enemy({8, enemy_h / 2.0f, 8}, 72),
-                            Enemy({8, enemy_h / 2.0f, -8}, 72)};
+    vector<Enemy> enemies = {Enemy({-7, enemy_h / 2.0f, 4}, 45, ORANGE), 
+                            Enemy({8, enemy_h / 2.0f, 8}, 72, BLUE),
+                            Enemy({8, enemy_h / 2.0f, -8}, 72, VIOLET)};
 
     enemies.back().scaling = {2, 1, 1};
 
@@ -423,6 +426,7 @@ int main(void) {
 
     while (!WindowShouldClose()) {
 
+        // transform the player using the merry go round
         {
             auto old_transform = merry_go_round_2.getGlobalTransform();
             merry_go_round_2.rotateSlightly();
@@ -881,7 +885,7 @@ int main(void) {
 
                                     rlTranslatef(-e.center.x, -e.center.y, -e.center.z);
 
-                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(ORANGE, 0.5f));
+                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(e.color, 0.5f));
                                     DrawCubeWires(e.center, enemy_l, enemy_l, enemy_l, BLUE);
                                 rlPopMatrix();
                             } else {
@@ -890,13 +894,26 @@ int main(void) {
                                     rlRotatef(e.yaw_angle, 0, 1, 0);
                                     rlScalef(e.scaling.x, e.scaling.y, e.scaling.z);
                                     rlTranslatef(-e.center.x, -e.center.y, -e.center.z);
-                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(ORANGE, 0.5f));
+                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(e.color, 0.5f));
                                     DrawCubeWires(e.center, enemy_l, enemy_l, enemy_l, BLUE);
                                 rlPopMatrix();
                             }
                         }
                     }
+                
+                    // damage direction indicators
+                    {
+                        // No actual enemy attacks, just drawing enemy location indicators.
+                        float indicator_circle_radius = 5.0f;
+                        for (auto& e : enemies) {
+                            auto direction_vector = Vector3Normalize(e.center - player.getCenter());
+                            auto point_on_circle = player.getCenter() + direction_vector * indicator_circle_radius;
+                            auto pointy_thing_start = point_on_circle - direction_vector * 2;
 
+                            // DrawCylinderEx(point_on_circle - direction_vector * 2, 0, 2, 2, 8, e.color);
+                            DrawCylinderEx(pointy_thing_start, point_on_circle, 0.2f, 0, 8, e.color);
+                        }
+                    }
                 // ## EndMode3D(); replaced with custom projection and view matrices
                 {
                     rlDrawRenderBatchActive();      // Flush 3D geometry before restoring matrices
