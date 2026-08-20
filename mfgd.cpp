@@ -900,7 +900,20 @@ int main(void) {
                             }
                         }
                     }
+                
+                    // damage direction indicators
+                    {
+                        // No actual enemy attacks, just drawing enemy location indicators.
+                        float indicator_circle_radius = 5.0f;
+                        for (auto& e : enemies) {
+                            auto direction_vector = Vector3Normalize(e.center - player.getCenter());
+                            auto point_on_circle = player.getCenter() + direction_vector * indicator_circle_radius;
+                            auto pointy_thing_start = point_on_circle - direction_vector * 2;
 
+                            // DrawCylinderEx(point_on_circle - direction_vector * 2, 0, 2, 2, 8, e.color);
+                            DrawCylinderEx(pointy_thing_start, point_on_circle, 0.2f, 0, 8, e.color);
+                        }
+                    }
                 // ## EndMode3D(); replaced with custom projection and view matrices
                 {
                     rlDrawRenderBatchActive();      // Flush 3D geometry before restoring matrices
