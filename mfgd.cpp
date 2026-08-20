@@ -48,6 +48,12 @@ struct EulerAngle {
 
         return (Vector3) {vx, vy, vz};
     }
+
+    void setFromVector(Vector3 vec) {
+        // revise this later.
+        pitch = asin(vec.y) * RAD2DEG;
+        yaw = atan2(vec.z, vec.x) * RAD2DEG;
+    }
 };
 
 // Conflicts with raylib's `Quanterion`.
@@ -238,7 +244,10 @@ struct EntityTransform {
         if (_move_parent == nullptr) {
             setGlobalTransform(getGlobalTransform() * translation_mat);
         } else {
-            _local_transform = getLocalTransform() * translation_mat;
+            auto parent = _move_parent;
+            setParent(nullptr);
+            setGlobalTransform(getGlobalTransform() * translation_mat);
+            setParent(parent);
         }
     }
 
@@ -413,6 +422,16 @@ int main(void) {
     Vector3 slerped = clock_vec;
 
     while (!WindowShouldClose()) {
+
+        {
+            auto old_transform = merry_go_round_2.getGlobalTransform();
+            merry_go_round_2.rotateSlightly();
+            if (player._move_parent != nullptr) {
+                auto forward_transformed = Vector3Transform(angle.toVector(), MatrixInvert(translate(old_transform, {0, 0, 0})));
+                forward_transformed = Vector3Transform(forward_transformed, translate(merry_go_round_2.getGlobalTransform(), {0, 0, 0}));
+                angle.setFromVector(forward_transformed);
+            }
+        }
 
         // mouse input
         {
@@ -748,7 +767,7 @@ int main(void) {
 
                         // Acuumulated rotation - as explained in MFGD
                         {
-                            merry_go_round_2.rotateSlightly();
+                            // merry_go_round_2.rotateSlightly(); done earlier to update the forward vector
 
                             // disc
                             {
