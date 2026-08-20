@@ -161,9 +161,12 @@ struct Enemy {
     int health = 3;
     Vector3 scaling {1, 1, 1};
 
-    Enemy(Vector3 c, float _yaw_angle) {
+    Color color;
+
+    Enemy(Vector3 c, float _yaw_angle, Color _color) {
         center = c;
         yaw_angle = _yaw_angle;
+        color = _color;
         bbox = AABB();
     }
     
@@ -370,9 +373,9 @@ int main(void) {
 
     float enemy_l = 4, enemy_w = 4, enemy_h = 4; 
 
-    vector<Enemy> enemies = {Enemy({-7, enemy_h / 2.0f, 4}, 45), 
-                            Enemy({8, enemy_h / 2.0f, 8}, 72),
-                            Enemy({8, enemy_h / 2.0f, -8}, 72)};
+    vector<Enemy> enemies = {Enemy({-7, enemy_h / 2.0f, 4}, 45, ORANGE), 
+                            Enemy({8, enemy_h / 2.0f, 8}, 72, BLUE),
+                            Enemy({8, enemy_h / 2.0f, -8}, 72, VIOLET)};
 
     enemies.back().scaling = {2, 1, 1};
 
@@ -882,7 +885,7 @@ int main(void) {
 
                                     rlTranslatef(-e.center.x, -e.center.y, -e.center.z);
 
-                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(ORANGE, 0.5f));
+                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(e.color, 0.5f));
                                     DrawCubeWires(e.center, enemy_l, enemy_l, enemy_l, BLUE);
                                 rlPopMatrix();
                             } else {
@@ -891,7 +894,7 @@ int main(void) {
                                     rlRotatef(e.yaw_angle, 0, 1, 0);
                                     rlScalef(e.scaling.x, e.scaling.y, e.scaling.z);
                                     rlTranslatef(-e.center.x, -e.center.y, -e.center.z);
-                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(ORANGE, 0.5f));
+                                    DrawCube(e.center, enemy_l, enemy_l, enemy_l, ColorAlpha(e.color, 0.5f));
                                     DrawCubeWires(e.center, enemy_l, enemy_l, enemy_l, BLUE);
                                 rlPopMatrix();
                             }
