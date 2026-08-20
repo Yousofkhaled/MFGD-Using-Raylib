@@ -423,6 +423,7 @@ int main(void) {
 
     while (!WindowShouldClose()) {
 
+        // transform the player using the merry go round
         {
             auto old_transform = merry_go_round_2.getGlobalTransform();
             merry_go_round_2.rotateSlightly();
