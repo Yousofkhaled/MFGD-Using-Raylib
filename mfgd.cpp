@@ -313,6 +313,67 @@ struct Plane {
     float d;
 };
 
+struct Triangle2D {
+    Vector2 p1, p2, p3;
+
+    static float get_singed_area(Vector2 a, Vector2 b, Vector2 c) {
+        Vector2 v1 = b - a;
+        Vector2 v2 = c - a;
+
+        float paralello_gram_singed_area = (v1.x * v2.y) - (v2.x * v1.y);
+        float triangle_signed_area = 0.5f * paralello_gram_singed_area;
+
+        return triangle_signed_area;
+    }
+
+    Vector3 evaluate_barycentric_coordinates(Vector2 p) {
+        Vector2 a = p1, b = p2, c = p3;
+        float total_area = get_singed_area(a, b, c);
+
+        Vector3 barycentric_coordinates;
+
+        barycentric_coordinates.x = get_singed_area(p, b, c) / total_area;
+        barycentric_coordinates.y = get_singed_area(a, p, c) / total_area;
+        barycentric_coordinates.z = get_singed_area(a, b, p) / total_area;
+
+        return barycentric_coordinates;
+    }
+};
+
+// triangle used for ray-triangle intersection.
+struct Triangle3D
+{
+    Vector3 p1, p2, p3;
+
+    static Vector2 vector_3d_drop_axis(Vector3 v3, int axis) {
+        Vector2 v2;
+        if (axis == 0) {
+            v2.x = v3.y;
+            v2.y = v3.z;
+        } else if (axis == 1) {
+            v2.x = v3.x;
+            v2.y = v3.z;
+        } else if (axis == 2) {
+            v2.x = v3.x;
+            v2.y = v3.y;
+        } else {
+            cout << "Invalid axis value\n";
+        }
+
+        return v2;
+    }
+
+    Triangle2D drop_axis(int axis) {
+        Triangle2D ret;
+        
+        ret.p1 = vector_3d_drop_axis(p1, axis);
+        ret.p2 = vector_3d_drop_axis(p2, axis);
+        ret.p3 = vector_3d_drop_axis(p3, axis);
+
+        return ret;
+    }
+};
+
 struct Frustum {
     Plane top, bottom, left, right, near, far;
 } camera_frustum;
@@ -424,13 +485,9 @@ int main(void) {
     float quat_start_time{}, quat_end_time{};
     Vector3 slerped = clock_vec;
 
-    // triangle used for ray-triangle intersection.
-    struct Triangle
+    Triangle3D triangle; // used for ray-triangle intersection
     {
-        Vector3 p1, p2, p3;
-    } triangle;
-    {
-        triangle = Triangle{{-20, 0, -12}, {-20, 0, -8}, {-20, 4, -10}};
+        triangle = Triangle3D{{-20, 0, -12}, {-20, 0, -8}, {-20, 4, -10}};
     }
 
     while (!WindowShouldClose()) {
@@ -684,7 +741,39 @@ int main(void) {
                         } else {
                             // Ray intersects with the plane.
                             Vector3 intersection_pos = Vector3Add(player.getCenter(), Vector3Normalize(direction) * k);
-                            collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+                            // Place it only when it's inside the triangle.
+                            // collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+
+                            // project onto the plane with the maximum projected area.
+                            // abs_x is max -> drop the x axis and project onto the yz plane.
+                            float abs_x = abs(cross_product.x);
+                            float abs_y = abs(cross_product.y);
+                            float abs_z = abs(cross_product.z);
+
+                            int dropped_axis = -1;
+
+                            if (abs_x > abs_y && abs_x > abs_z) {
+                                dropped_axis = 0;
+                            } else if (abs_y > abs_x && abs_y > abs_z) {
+                                dropped_axis = 1;
+                            } else {
+                                dropped_axis = 2;
+                            }
+
+                            Vector2 projected_intersection_pos_2d = Triangle3D::vector_3d_drop_axis(intersection_pos, dropped_axis);
+                            Triangle2D projected_triangle_2d = triangle.drop_axis(dropped_axis);
+
+                            Vector3 barycentric_coordinates = projected_triangle_2d.evaluate_barycentric_coordinates(projected_intersection_pos_2d);
+
+                            if (
+                                0.0f <= barycentric_coordinates.x && barycentric_coordinates.x <= 1.0f &&
+                                0.0f <= barycentric_coordinates.y && barycentric_coordinates.y <= 1.0f &&
+                                0.0f <= barycentric_coordinates.z && barycentric_coordinates.z <= 1.0f
+                            )
+                            {
+
+                                collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+                            }
                         }
                     }
                 }
