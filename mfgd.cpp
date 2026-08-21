@@ -651,6 +651,43 @@ int main(void) {
                         }
                     }
                 }
+
+                // line-triangle intersection
+                {
+                    // construct plane equation from the triangle
+
+                    // Get two vectors
+                    Vector3 p12 = triangle.p2 - triangle.p1;
+                    Vector3 p13 = triangle.p3 - triangle.p1;
+
+                    // get plane normal
+                    Vector3 cross_product = Vector3CrossProduct(p12, p13);
+                    Vector3 n_hat = Vector3Normalize(cross_product);
+
+                    // evaluate d of the equation ax + by + cx + d = 0
+                    Plane plane;
+                    plane.normal = n_hat;
+
+                    // substitute in the plane equation. dot (plane normal, point on plane) + d = 0
+                    plane.d = -Vector3DotProduct(plane.normal, triangle.p1);
+
+                    // find point of ray-plane intersection.
+                    auto numerator = -plane.d - Vector3DotProduct(plane.normal, player.getCenter());
+                    auto denominator = Vector3DotProduct(plane.normal, Vector3Normalize(direction));
+
+                    if (denominator == 0) {
+                        // has no solution.
+                    } else {
+                        float k = numerator / denominator;
+                        if (k < 0) {
+                            // ray goes to the opposite direction
+                        } else {
+                            // Ray intersects with the plane.
+                            Vector3 intersection_pos = Vector3Add(player.getCenter(), Vector3Normalize(direction) * k);
+                            collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+                        }
+                    }
+                }
             }
 
             while (!collision_cubes.empty() && GetTime() > collision_cubes.front().destruction_time) {
