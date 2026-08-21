@@ -313,6 +313,67 @@ struct Plane {
     float d;
 };
 
+struct Triangle2D {
+    Vector2 p1, p2, p3;
+
+    static float get_singed_area(Vector2 a, Vector2 b, Vector2 c) {
+        Vector2 v1 = b - a;
+        Vector2 v2 = c - a;
+
+        float paralello_gram_singed_area = (v1.x * v2.y) - (v2.x * v1.y);
+        float triangle_signed_area = 0.5f * paralello_gram_singed_area;
+
+        return triangle_signed_area;
+    }
+
+    Vector3 evaluate_barycentric_coordinates(Vector2 p) {
+        Vector2 a = p1, b = p2, c = p3;
+        float total_area = get_singed_area(a, b, c);
+
+        Vector3 barycentric_coordinates;
+
+        barycentric_coordinates.x = get_singed_area(p, b, c) / total_area;
+        barycentric_coordinates.y = get_singed_area(a, p, c) / total_area;
+        barycentric_coordinates.z = get_singed_area(a, b, p) / total_area;
+
+        return barycentric_coordinates;
+    }
+};
+
+// triangle used for ray-triangle intersection.
+struct Triangle3D
+{
+    Vector3 p1, p2, p3;
+
+    static Vector2 vector_3d_drop_axis(Vector3 v3, int axis) {
+        Vector2 v2;
+        if (axis == 0) {
+            v2.x = v3.y;
+            v2.y = v3.z;
+        } else if (axis == 1) {
+            v2.x = v3.x;
+            v2.y = v3.z;
+        } else if (axis == 2) {
+            v2.x = v3.x;
+            v2.y = v3.y;
+        } else {
+            cout << "Invalid axis value\n";
+        }
+
+        return v2;
+    }
+
+    Triangle2D drop_axis(int axis) {
+        Triangle2D ret;
+        
+        ret.p1 = vector_3d_drop_axis(p1, axis);
+        ret.p2 = vector_3d_drop_axis(p2, axis);
+        ret.p3 = vector_3d_drop_axis(p3, axis);
+
+        return ret;
+    }
+};
+
 struct Frustum {
     Plane top, bottom, left, right, near, far;
 } camera_frustum;
@@ -365,7 +426,7 @@ int main(void) {
 
     float width = 1200, height = 650;
 
-    InitWindow(width, height, "mfgd - 39 - camera-view-transform");
+    InitWindow(width, height, "mfgd - 45 - ray-triangle intersection");
 
     float l, w, h;
     l = w = h = 2;
@@ -423,6 +484,11 @@ int main(void) {
 
     float quat_start_time{}, quat_end_time{};
     Vector3 slerped = clock_vec;
+
+    Triangle3D triangle; // used for ray-triangle intersection
+    {
+        triangle = Triangle3D{{-20, 0, -12}, {-20, 0, -8}, {-20, 4, -10}};
+    }
 
     while (!WindowShouldClose()) {
 
@@ -500,10 +566,10 @@ int main(void) {
             auto dist = sqrt(Vector3DotProduct(v, v));
 
             if (dist <= merry_go_round_2.radius) {
-                cout << "trace" << dist << " : i am INSIDE the merry go round\n";
+                // cout << "trace" << dist << " : i am INSIDE the merry go round\n";
                 player.setParent(&merry_go_round_2);
             } else {
-                cout << "trace" << dist << " : i am OUTSIDE the merry go round\n";
+                // cout << "trace" << dist << " : i am OUTSIDE the merry go round\n";
                 player.setParent(nullptr);
             }
         }
@@ -543,98 +609,172 @@ int main(void) {
                     lines.pop_front();
                 }
 
-                float smallest_fraction = infinity;
-                Vector3 nearest_intersection;
+                // line-AABB intersetion, does bullet hit player?
+                {
+                    float smallest_fraction = infinity;
+                    Vector3 nearest_intersection;
 
-                Enemy* collided_enemy = nullptr;
+                    Enemy* collided_enemy = nullptr;
 
-                Vector3 intersection;
-                float fraction;
-                for (auto& e: enemies) {
-                    auto to_origin = MatrixTranslate(-e.center.x, -e.center.y, -e.center.z);
-                    auto scale = MatrixScale(e.scaling.x, e.scaling.y, e.scaling.z);
-                    auto rotate = MatrixRotate({0, 1, 0}, e.yaw_angle * DEG2RAD);
-                    auto to_location = MatrixTranslate(e.center.x, e.center.y, e.center.z);
+                    Vector3 intersection;
+                    float fraction;
+                    for (auto& e: enemies) {
+                        auto to_origin = MatrixTranslate(-e.center.x, -e.center.y, -e.center.z);
+                        auto scale = MatrixScale(e.scaling.x, e.scaling.y, e.scaling.z);
+                        auto rotate = MatrixRotate({0, 1, 0}, e.yaw_angle * DEG2RAD);
+                        auto to_location = MatrixTranslate(e.center.x, e.center.y, e.center.z);
 
-                    Matrix final_transform = MatrixMultiply(to_origin, scale);
-                    final_transform = MatrixMultiply(final_transform, MatrixMultiply(rotate, to_location));
+                        Matrix final_transform = MatrixMultiply(to_origin, scale);
+                        final_transform = MatrixMultiply(final_transform, MatrixMultiply(rotate, to_location));
 
-                    Matrix inverse_transform = MatrixInvert(final_transform);
+                        Matrix inverse_transform = MatrixInvert(final_transform);
 
-                    for (auto l: lines) {
-                        Vector3 v0 = Vector3Transform(l.first, inverse_transform);
-                        Vector3 v1 = Vector3Transform(l.second, inverse_transform);
-                        if (line_AABB_intersection(e.bbox, v0, v1, intersection, fraction)) {
-                            // cout << "trace : has collided : " << ++collisions_count << "\n";
+                        for (auto l: lines) {
+                            Vector3 v0 = Vector3Transform(l.first, inverse_transform);
+                            Vector3 v1 = Vector3Transform(l.second, inverse_transform);
+                            if (line_AABB_intersection(e.bbox, v0, v1, intersection, fraction)) {
+                                // cout << "trace : has collided : " << ++collisions_count << "\n";
 
-                            // - transform `intersection` back to the world coordinates.
-                            // - `fraction` should be the same regardless of whether the ray was transformed
-                            // or not.
-                            if (fraction < smallest_fraction) {
-                                smallest_fraction = fraction;
-                                // nearest_intersection = l.first + Vector3Subtract(l.second, l.first) * fraction;
-                                nearest_intersection = Vector3Transform(intersection, final_transform);
-                                collided_enemy = &e;
+                                // - transform `intersection` back to the world coordinates.
+                                // - `fraction` should be the same regardless of whether the ray was transformed
+                                // or not.
+                                if (fraction < smallest_fraction) {
+                                    smallest_fraction = fraction;
+                                    // nearest_intersection = l.first + Vector3Subtract(l.second, l.first) * fraction;
+                                    nearest_intersection = Vector3Transform(intersection, final_transform);
+                                    collided_enemy = &e;
+                                }
                             }
                         }
                     }
-                }
 
-                if (smallest_fraction != infinity) {
-                    // cout << "trace : current time : " << GetTime() << "\n";
-                    collision_cubes.push_back(Bullet(nearest_intersection, GetTime()));
-                    collided_enemy->start_rotation(GetTime());
+                    if (smallest_fraction != infinity) {
+                        // cout << "trace : current time : " << GetTime() << "\n";
+                        collision_cubes.push_back(Bullet(nearest_intersection, GetTime()));
+                        collided_enemy->start_rotation(GetTime());
 
-                    collided_enemy->health--;
-                    if (collided_enemy->health <= 0) {
-                        for (int i = 0; i < enemies.size(); ++i) {
-                            if (&enemies[i] == collided_enemy) {
-                                enemies.erase(enemies.begin() + i);
-                                break;
+                        collided_enemy->health--;
+                        if (collided_enemy->health <= 0) {
+                            for (int i = 0; i < enemies.size(); ++i) {
+                                if (&enemies[i] == collided_enemy) {
+                                    enemies.erase(enemies.begin() + i);
+                                    break;
+                                }
                             }
                         }
                     }
                 }
 
                 // line-plane intersection - bullet collision with the grid.
-                /*
-                    (v0 + k * direction) is my vector
-                    ax + by + cz + d = 0 is the plane equation where i should substitute into
+                {
+                    /*
+                        (v0 + k * direction) is my vector
+                        ax + by + cz + d = 0 is the plane equation where i should substitute into
 
-                    dot({a, b, c}, v0) + k * dot({a, b, c}, direction) = d
+                        dot({a, b, c}, v0) + k * dot({a, b, c}, direction) = d
+                        
+                        plane equation of the grid -> "1 * y = 0", a = 0, b = 1, c = 0, d = 0
+
+                        k = -dot({0, 1, 0}, v0) / dot({0, 1, 0}, direction)
+                        
+                        check for zero denominator. no soln
+                        check for -ve k, plane is in the opposite direction
+
+                        Another way to look at it is that the ratio between 
+                        camera position to a point in plane projected onto the plane normal
+                        and
+                        (k - unknown) * (camera position + direction) vector projected onto the plane normal
+
+                        should be 1:1
+                    */
+
+                    Vector3 plane_vec = {0, 1, 0};
                     
-                    plane equation of the grid -> "1 * y = 0", a = 0, b = 1, c = 0, d = 0
-
-                    k = -dot({0, 1, 0}, v0) / dot({0, 1, 0}, direction)
-                    
-                    check for zero denominator. no soln
-                    check for -ve k, plane is in the opposite direction
-
-                    Another way to look at it is that the ratio between 
-                    camera position to a point in plane projected onto the plane normal
-                    and
-                    (k - unknown) * (camera position + direction) vector projected onto the plane normal
-
-                    should be 1:1
-                */
-
-                Vector3 plane_vec = {0, 1, 0};
-                
-                auto numerator = -Vector3DotProduct(plane_vec, player.getCenter());
-                auto denominator = Vector3DotProduct(plane_vec, Vector3Normalize(direction));
-                if (denominator == 0) {
-                    cout << "trace : line - plane collision: no solution\n";
-                } else {
-                    float k = numerator / denominator;
-                    if (k < 0) {
-                        cout << "trace : line - plane collision: opposite directions\n";
+                    auto numerator = -Vector3DotProduct(plane_vec, player.getCenter());
+                    auto denominator = Vector3DotProduct(plane_vec, Vector3Normalize(direction));
+                    if (denominator == 0) {
+                        cout << "trace : line - plane collision: no solution\n";
                     } else {
-                        Vector3 intersection_pos = Vector3Add(player.getCenter(), Vector3Normalize(direction) * k);
-                        collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+                        float k = numerator / denominator;
+                        if (k < 0) {
+                            cout << "trace : line - plane collision: opposite directions\n";
+                        } else {
+                            Vector3 intersection_pos = Vector3Add(player.getCenter(), Vector3Normalize(direction) * k);
+                            collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
 
-                        cout << "trace : line - plane collision: collided at : " 
-                        << intersection_pos.x << ", " << intersection_pos.y << ", " << intersection_pos.z 
-                        << "\n";
+                            cout << "trace : line - plane collision: collided at : " 
+                            << intersection_pos.x << ", " << intersection_pos.y << ", " << intersection_pos.z 
+                            << "\n";
+                        }
+                    }
+                }
+
+                // line-triangle intersection
+                {
+                    // construct plane equation from the triangle
+
+                    // Get two vectors
+                    Vector3 p12 = triangle.p2 - triangle.p1;
+                    Vector3 p13 = triangle.p3 - triangle.p1;
+
+                    // get plane normal
+                    Vector3 cross_product = Vector3CrossProduct(p12, p13);
+                    Vector3 n_hat = Vector3Normalize(cross_product);
+
+                    // evaluate d of the equation ax + by + cx + d = 0
+                    Plane plane;
+                    plane.normal = n_hat;
+
+                    // substitute in the plane equation. dot (plane normal, point on plane) + d = 0
+                    plane.d = -Vector3DotProduct(plane.normal, triangle.p1);
+
+                    // find point of ray-plane intersection.
+                    auto numerator = -plane.d - Vector3DotProduct(plane.normal, player.getCenter());
+                    auto denominator = Vector3DotProduct(plane.normal, Vector3Normalize(direction));
+
+                    if (denominator == 0) {
+                        // has no solution.
+                    } else {
+                        float k = numerator / denominator;
+                        if (k < 0) {
+                            // ray goes to the opposite direction
+                        } else {
+                            // Ray intersects with the plane.
+                            Vector3 intersection_pos = Vector3Add(player.getCenter(), Vector3Normalize(direction) * k);
+                            // Place it only when it's inside the triangle.
+                            // collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+
+                            // project onto the plane with the maximum projected area.
+                            // abs_x is max -> drop the x axis and project onto the yz plane.
+                            float abs_x = abs(cross_product.x);
+                            float abs_y = abs(cross_product.y);
+                            float abs_z = abs(cross_product.z);
+
+                            int dropped_axis = -1;
+
+                            if (abs_x > abs_y && abs_x > abs_z) {
+                                dropped_axis = 0;
+                            } else if (abs_y > abs_x && abs_y > abs_z) {
+                                dropped_axis = 1;
+                            } else {
+                                dropped_axis = 2;
+                            }
+
+                            Vector2 projected_intersection_pos_2d = Triangle3D::vector_3d_drop_axis(intersection_pos, dropped_axis);
+                            Triangle2D projected_triangle_2d = triangle.drop_axis(dropped_axis);
+
+                            Vector3 barycentric_coordinates = projected_triangle_2d.evaluate_barycentric_coordinates(projected_intersection_pos_2d);
+
+                            if (
+                                0.0f <= barycentric_coordinates.x && barycentric_coordinates.x <= 1.0f &&
+                                0.0f <= barycentric_coordinates.y && barycentric_coordinates.y <= 1.0f &&
+                                0.0f <= barycentric_coordinates.z && barycentric_coordinates.z <= 1.0f
+                            )
+                            {
+
+                                collision_cubes.push_back(Bullet(intersection_pos, GetTime()));
+                            }
+                        }
                     }
                 }
             }
@@ -913,6 +1053,14 @@ int main(void) {
                             // DrawCylinderEx(point_on_circle - direction_vector * 2, 0, 2, 2, 8, e.color);
                             DrawCylinderEx(pointy_thing_start, point_on_circle, 0.2f, 0, 8, e.color);
                         }
+                    }
+
+                    // Draw triangle used for ray-triangle intersection
+                    {
+                        DrawTriangle3D(triangle.p1, triangle.p2, triangle.p3, GREEN);
+                        // Draw the triangle in the oppsite order because it won't be shown from the
+                        // opposite direcion due to backface culling.
+                        DrawTriangle3D(triangle.p2, triangle.p1, triangle.p3, GREEN);
                     }
                 // ## EndMode3D(); replaced with custom projection and view matrices
                 {
