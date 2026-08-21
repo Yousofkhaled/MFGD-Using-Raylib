@@ -152,7 +152,29 @@ struct AABB {
         vec_min = mn;
         vec_max = mx;
     }
+
+    static bool test_AABB_AABB_intersection(AABB b1, AABB b2) {
+        if (
+            b1.vec_min.x > b2.vec_max.x || b1.vec_max.x < b2.vec_min.x ||
+            b1.vec_min.y > b2.vec_max.y || b1.vec_max.y < b2.vec_min.y ||
+            b1.vec_min.z > b2.vec_max.z || b1.vec_max.z < b2.vec_min.z
+        )
+            return false;
+        return true;
+    }
 };
+
+struct TriggerArea {
+    Vector3 center;
+    float width = 7, height = 7, length = 9;
+    AABB aabb;
+
+    TriggerArea(Vector3 _center) {
+        center = _center;
+        aabb.vec_min = center - Vector3{width, height, length} / 2.0f;
+        aabb.vec_max = center + Vector3{width, height, length} / 2.0f;
+    }
+} trigger_area({18, 3.5, -15});
 
 struct Enemy {
     Vector3 center;
@@ -262,6 +284,7 @@ struct EntityTransform {
 
 struct Entity : public EntityTransform {
     Vector3 center;
+    float width = 2, height = 2, length = 2;
 
     Vector3 getCenter() {
         return Vector3Transform({0, 0, 0}, getGlobalTransform());
@@ -269,6 +292,16 @@ struct Entity : public EntityTransform {
 
     Entity(Vector3 _center) {
         _global_transform = MatrixTranslate(_center.x, _center.y, center.z);
+    }
+
+    AABB getRoughAABB() {
+        auto center = getCenter();
+
+        AABB aabb;
+        aabb.vec_min = center - Vector3{width, height, length} / 2.0f;
+        aabb.vec_max = center + Vector3{width, height, length} / 2.0f;
+
+        return aabb;
     }
 };
 
@@ -428,9 +461,7 @@ int main(void) {
 
     InitWindow(width, height, "mfgd - 45 - ray-triangle intersection");
 
-    float l, w, h;
-    l = w = h = 2;
-    Entity player({0, h / 2.0f, 0});
+    Entity player({0, 1.0f, 0});
 
     float enemy_l = 4, enemy_w = 4, enemy_h = 4; 
 
@@ -878,7 +909,11 @@ int main(void) {
                             // rlTranslatef(-player.getCenter().x, -player.getCenter().y, -player.getCenter().z);
                             
                             DrawCube(Vector3Zero(), 0.1f, 0.1f, 0.1f, RED);
-                            DrawCubeWires(Vector3Zero(), l, l, l, GREEN);
+                            DrawCubeWires(Vector3Zero(), player.width, player.height, player.length, GREEN);
+
+                            if (AABB::test_AABB_AABB_intersection(player.getRoughAABB(), trigger_area.aabb)) {
+                                DrawCube(Vector3Zero(), player.width, player.height, player.length, ColorAlpha(RED, 0.3f));
+                            }
                         rlPopMatrix();
                     }
 
@@ -1041,6 +1076,12 @@ int main(void) {
                         }
                     }
                 
+                    // trigger area
+                    {
+                        DrawCube(trigger_area.center, trigger_area.width, trigger_area.height, trigger_area.length,
+                                ColorAlpha(BLUE, 0.5f));
+                    }
+
                     // damage direction indicators
                     {
                         // No actual enemy attacks, just drawing enemy location indicators.
