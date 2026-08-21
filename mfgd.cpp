@@ -365,7 +365,7 @@ int main(void) {
 
     float width = 1200, height = 650;
 
-    InitWindow(width, height, "mfgd - 39 - camera-view-transform");
+    InitWindow(width, height, "mfgd - 45 - ray-triangle intersection");
 
     float l, w, h;
     l = w = h = 2;
